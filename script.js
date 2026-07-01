@@ -152,17 +152,21 @@ function calculateLoading() {
 
       const totalFit = qty1 + qty2 + qty3;
 
+      const actualLoadQty = Math.min(orderQty, totalFit);
       const cartonCbm = (adjLength * adjWidth * adjHeight) / 1000000000;
-      const utilizedCbm = cartonCbm * orderQty;
+      const utilizedCbm = cartonCbm * actualLoadQty;
+
+      const reduced = orderQty > totalFit;
 
       cartonSummaryRows.push({
         label: `Size ${index + 1}: ${cartonLength}\u00d7${cartonWidth}\u00d7${cartonHeight} mm`,
-        qty: orderQty,
+        qty: actualLoadQty,
+        orderQty: orderQty,
         cbm: utilizedCbm,
       });
 
       totalUtilizedCbm += utilizedCbm;
-      totalCartonQty += orderQty;
+      totalCartonQty += actualLoadQty;
 
       detailsHTML += `
         <div class="loading-details">
@@ -191,6 +195,7 @@ function calculateLoading() {
           </div>
 
           <p class="fc2"><b>Total Loading Qty with flat: ${totalFit} Boxes</b></p>
+          <p><b>Order Qty: ${orderQty} Boxes${reduced ? ` | Loaded Qty: ${actualLoadQty} Boxes (capped at max fit)` : ''}</b></p>
 
           <p>Utilized CBM: ${utilizedCbm.toFixed(2)} CBM</p>
           <p>Empty CBM: ${(container.capacity - utilizedCbm).toFixed(2)} CBM</p>
@@ -205,10 +210,11 @@ function calculateLoading() {
 
   let summaryBodyHTML = "";
   cartonSummaryRows.forEach((row) => {
+    const reduced = row.orderQty > row.qty;
     summaryBodyHTML += `
       <tr>
         <td>${row.label}</td>
-        <td>${row.qty}</td>
+        <td>${row.qty}${reduced ? `<br><small style="color: #f39c12;">Order: ${row.orderQty}</small>` : ''}</td>
         <td>${row.cbm.toFixed(2)} m\u00b3</td>
       </tr>`;
   });
