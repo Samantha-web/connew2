@@ -209,25 +209,43 @@ function calculateLoading() {
   document.getElementById("totalEmptyCbm").textContent = (containerData[type].capacity - totalUtilizedCbm).toFixed(2);
 
   let summaryBodyHTML = "";
+  const emptyCbm = containerData[type].capacity - totalUtilizedCbm;
   cartonSummaryRows.forEach((row) => {
     const reduced = row.orderQty > row.qty;
+    const perCartonCbm = row.qty > 0 ? row.cbm / row.qty : 0;
+    let fillQtyNum, fillQty;
+    if (emptyCbm > 0 && perCartonCbm > 0) {
+      fillQtyNum = Math.floor(emptyCbm / perCartonCbm);
+      fillQty = `+${fillQtyNum}`;
+    } else if (emptyCbm < 0 && perCartonCbm > 0) {
+      fillQtyNum = -Math.ceil(Math.abs(emptyCbm) / perCartonCbm);
+      fillQty = `${fillQtyNum}`;
+    } else {
+      fillQtyNum = 0;
+      fillQty = '-';
+    }
+    const proposedLoadQty = Math.max(0, row.qty + fillQtyNum);
     summaryBodyHTML += `
       <tr>
         <td>${row.label}</td>
+        <td>${perCartonCbm.toFixed(4)}</td>
         <td>${row.qty}${reduced ? `<br><small style="color: #f39c12;">Order: ${row.orderQty}</small>` : ''}</td>
         <td>${row.cbm.toFixed(2)} m\u00b3</td>
+        <td>${fillQty}</td>
+        <td>${proposedLoadQty}</td>
       </tr>`;
   });
-  const emptyCbm = containerData[type].capacity - totalUtilizedCbm;
   const exceedsCapacity = totalUtilizedCbm > containerData[type].capacity;
   const summaryFooterHTML = `
     <tr style="font-weight: bold; background: rgba(52, 152, 219, 0.2);">
-      <td>Total</td>
+      <td colspan="2">Total</td>
       <td>${totalCartonQty}</td>
       <td>${totalUtilizedCbm.toFixed(2)} m\u00b3</td>
+      <td></td>
+      <td></td>
     </tr>
     <tr style="font-weight: bold; background: rgba(231, 76, 60, 0.15);">
-      <td colspan="2">Total Empty CBM:</td>
+      <td colspan="5">Total Empty CBM:</td>
       <td style="${exceedsCapacity ? 'color: #e74c3c; font-weight: bold;' : ''}">${emptyCbm.toFixed(2)} m\u00b3</td>
     </tr>`;
   document.getElementById("loadingSummaryBody").innerHTML = summaryBodyHTML;
@@ -246,10 +264,40 @@ function calculateLoading() {
     const warningDiv = document.createElement("div");
     warningDiv.id = "capacityWarning";
     warningDiv.innerHTML = warningHTML;
+
+    // Find best single size to reduce
+    const excessCbm = Math.abs(emptyCbm);
+    let bestSize = null;
+    let bestRemove = Infinity;
+    cartonSummaryRows.forEach((row) => {
+      const perCartonCbm = row.qty > 0 ? row.cbm / row.qty : 0;
+      if (perCartonCbm > 0) {
+        const toRemove = Math.ceil(excessCbm / perCartonCbm);
+        if (toRemove < bestRemove) {
+          bestRemove = toRemove;
+          bestSize = row;
+        }
+      }
+    });
+
+    if (bestSize && bestRemove > 0) {
+      const tipDiv = document.createElement("div");
+      tipDiv.id = "singleSizeTip";
+      tipDiv.style.cssText = "background: rgba(243, 156, 18, 0.2); border: 2px solid #f39c12; border-radius: 10px; padding: 15px; margin-top: 10px; text-align: center;";
+      tipDiv.innerHTML = `
+        <i class="fas fa-lightbulb" style="color: #f39c12; font-size: 1.3rem; margin-right: 8px;"></i>
+        <span style="color: #f39c12; font-weight: bold;">
+          Tip: Reduce <b>${bestSize.label}</b> by <b>${bestRemove}</b> cartons to fit the container with a single size adjustment.
+        </span>`;
+      document.getElementById("loadingSummary").appendChild(tipDiv);
+    }
+
     document.getElementById("loadingSummary").appendChild(warningDiv);
   } else {
     const existingWarning = document.getElementById("capacityWarning");
     if (existingWarning) existingWarning.remove();
+    const existingTip = document.getElementById("singleSizeTip");
+    if (existingTip) existingTip.remove();
   }
 
   const utilizationPercent = Math.min(100, (totalUtilizedCbm / containerData[type].capacity) * 100).toFixed(1);
