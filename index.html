@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Container Loading Calculator</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>
+          <i class="fas fa-shipping-fast"></i> Container Loading Calculator
+        </h1>
+        <p>
+          Calculate the optimal quantity of cartons that fit in shipping
+          containers with precision
+        </p>
+      </header>
+
+      <div class="nav-tabs">
+        <!--<a href="https://samantha-web.github.io/navigationhub/"><button class="tab-btn active" data-tab="home"><i class="fas fa-home"></i>Back to Navi Bar</button></a> -->
+        <button class="tab-btn active" data-tab="home">
+          <i class="fas fa-home"></i> Home
+        </button>
+        <button class="tab-btn" data-tab="calculator">
+          <i class="fas fa-calculator"></i> Calculator
+        </button>
+        <button class="tab-btn" data-tab="info">
+          <i class="fas fa-info-circle"></i> Container Info
+        </button>
+      </div>
+
+      <!-- Home Page -->
+      <div id="home" class="tab-content">
+        <div class="home-content">
+          <h2>Optimize Your Container Loading Process</h2>
+          <p>
+            Our advanced calculator helps you determine exactly how many cartons
+            will fit in your shipping container, maximizing space utilization
+            and reducing costs.
+          </p>
+
+          <div class="features">
+            <div class="feature-card">
+              <i class="fas fa-boxes"></i>
+              <h3>Multiple Carton Sizes</h3>
+              <p>
+                Calculate for multiple different carton sizes simultaneously
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <i class="fas fa-ruler-combined"></i>
+              <h3>Three-Step Loading</h3>
+              <p>
+                Normal orientation + flat loading in length + flat in height
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <i class="fas fa-cube"></i>
+              <h3>CBM Calculation</h3>
+              <p>Get precise utilized and empty CBM measurements</p>
+            </div>
+
+            <div class="feature-card">
+              <i class="fas fa-container-storage"></i>
+              <h3>Container Types</h3>
+              <p>Support for all standard container sizes and types</p>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button class="tab-btn" data-tab="calculator">
+              <i class="fas fa-calculator"></i> Calculator
+            </button>
+          </div>
+
+          <img
+            src="https://www.haulio.io/wp-content/uploads/2020/11/Boxes-Floor-Loaded-in-Container.jpg"
+            alt="Shipping Container"
+            class="home-image"
+          />
+        </div>
+      </div>
+
+      <!-- Calculator Page -->
+      <div id="calculator" class="tab-content" style="display: none">
+        <div class="card">
+          <h2 class="card-title">
+            <i class="fas fa-box-open"></i> Container Details
+          </h2>
+          <div class="form-group">
+            <label for="containerType">Container Type:</label>
+            <select
+              id="containerType"
+              class="form-control"
+              onchange="updateContainerDetails()"
+            >
+              <option value="20">20ft Standard</option>
+              <option value="40">40ft Standard</option>
+              <option value="40hc">40ft High Cube</option>
+              <option value="45hc">45ft High Cube</option>
+            </select>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <strong>Internal Length:</strong>
+              <span id="internalLength">5898 mm</span>
+            </div>
+            <div class="summary-item">
+              <strong>Internal Width:</strong>
+              <span id="internalWidth">2352 mm</span>
+            </div>
+            <div class="summary-item">
+              <strong>Internal Height:</strong>
+              <span id="internalHeight">2393 mm</span>
+            </div>
+            <div class="summary-item">
+              <strong>Capacity:</strong>
+              <span id="capacity">33.2 m³</span>
+            </div>
+            <div class="summary-item">
+              <strong>Max Load:</strong>
+              <span id="maxLoad">21,770 kg</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">
+            <i class="fas fa-boxes"></i> Carton Measurements
+          </h2>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <strong>Total Carton Quantity:</strong>
+              <span id="totalCartonQty">0</span>
+            </div>
+            <div class="summary-item">
+              <strong>Total Utilized CBM:</strong>
+              <span id="totalUtilizedCbm">0.00</span> m³
+            </div>
+            <div class="summary-item">
+              <strong>Total Empty CBM:</strong>
+              <span id="totalEmptyCbm">0.00</span> m³
+            </div>
+          </div>
+
+          <table id="cartonTable" class="info-table">
+            <thead>
+              <tr>
+                <th>Carton Size</th>
+                <th>Length (mm)</th>
+                <th>Width (mm)</th>
+                <th>Height (mm)</th>
+                <th>Order Quantity</th>
+                <th>Extra Length (bulging)</th>
+                <th>Extra Width (bulging)</th>
+                <th>Extra Height (bulging)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="carton-length form-control"
+                    placeholder="Length"
+                    value=""
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="carton-width form-control"
+                    placeholder="Width"
+                    value=""
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="carton-height form-control"
+                    placeholder="Height"
+                    value=""
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="order-qty form-control"
+                    placeholder="Quantity"
+                    value=""
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="bulging-length form-control"
+                    value="0"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="bulging-width form-control"
+                    value="12"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    class="bulging-height form-control"
+                    value="3"
+                  />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    onclick="deleteRow(this)"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <button type="button" class="btn btn-success" onclick="addRow()">
+            <i class="fas fa-plus"></i> Add Carton Size
+          </button>
+
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="calculateLoading()">
+              <i class="fas fa-calculator"></i> Calculate Loading
+            </button>
+            <button class="btn btn-secondary" onclick="clearData()">
+              <i class="fas fa-trash-alt"></i> Clear Data
+            </button>
+          </div>
+        </div>
+
+        <div id="containerDetails"></div>
+        <div id="loadingSummary" class="card" style="display: none">
+          <h2 class="card-title">
+            <i class="fas fa-chart-bar"></i> Loading Summary
+          </h2>
+          <div class="loading-stats">
+            <div class="loading-stats-item">
+              <div class="loading-stats-label">Space Utilization</div>
+              <div class="loading-stats-value" id="utilizationPercent">0%</div>
+              <div class="efficiency-meter">
+                <div class="efficiency-fill" id="efficiencyFill"></div>
+                <div class="efficiency-text" id="efficiencyText">0%</div>
+              </div>
+            </div>
+            <div class="loading-stats-item">
+              <div class="loading-stats-label">Cartons Loaded</div>
+              <div class="loading-stats-value" id="totalCartonsLoaded">0</div>
+            </div>
+            <div class="loading-stats-item">
+              <div class="loading-stats-label">Empty Space</div>
+              <div class="loading-stats-value" id="emptySpaceValue">
+                0.00 m³
+              </div>
+            </div>
+          </div>
+          <table class="info-table" id="loadingSummaryTable" style="margin-top: 20px;">
+            <thead>
+              <tr>
+                <th>Carton Measurements</th>
+                <th>Per Carton CBM</th>
+                <th>Loaded Qty</th>
+                <th>Balance to Load</th>
+                <th>Total Utilized CBM</th>
+                <th>Qty to Fill</th>
+                <th>Proposed Load Qty</th>
+              </tr>
+            </thead>
+            <tbody id="loadingSummaryBody"></tbody>
+            <tfoot id="loadingSummaryFooter"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Container Info Page -->
+      <div id="info" class="tab-content" style="display: none">
+        <div class="container-info">
+          <h2 class="card-title">
+            <i class="fas fa-info-circle"></i> Container Specifications
+          </h2>
+
+          <table class="info-table">
+            <thead>
+              <tr>
+                <th>Container Type</th>
+                <th>Internal Dimensions (mm)</th>
+                <th>Volume (CBM)</th>
+                <th>Max Load (KGS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>20ft Standard</td>
+                <td>L: 5898, W: 2352, H: 2393</td>
+                <td>33.2</td>
+                <td>21,770</td>
+              </tr>
+              <tr>
+                <td>40ft Standard</td>
+                <td>L: 12032, W: 2352, H: 2393</td>
+                <td>67.7</td>
+                <td>26,780</td>
+              </tr>
+              <tr>
+                <td>40ft High Cube</td>
+                <td>L: 12032, W: 2352, H: 2698</td>
+                <td>76.4</td>
+                <td>30,480</td>
+              </tr>
+              <tr>
+                <td>45ft High Cube</td>
+                <td>L: 13544, W: 2352, H: 2698</td>
+                <td>86.0</td>
+                <td>32,500</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer>
+        <p>Copyright Samantha 2025 © All rights reserved.</p>
+        <p>
+          <a href="mailto:s2880882@gmail.com"
+            >Email: s2880882@gmail.com (Samantha)</a
+          >
+        </p>
+        <p>Container Loading Calculator</p>
+      </footer>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
