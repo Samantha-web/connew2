@@ -106,6 +106,150 @@ function deleteRow(btn) {
   }
 }
 
+// Compute how many cartons of a given (adjusted) size fit, given an available
+// container length. Returns the quantities for the three loading steps plus the
+// length actually consumed by this size.
+// Consumed length = (L x Lines) + (W x flat Lines rest length)  <-- matches the
+// sequential length-packing rule requested for the Loading Summary.
+function computeFit(adjLength, adjWidth, adjHeight, availLength, container) {
+  // Each normal-orientation carton occupies (carton Length + Extra Length/bulging)
+  // along the container length; each flat-oriented carton faces its carton Length
+  // towards the container width/height, so the length bulge is also added there.
+  const normalLengthPerCarton = adjLength;
+
+  const perLength = Math.floor(availLength / normalLengthPerCarton);
+  const perWidth = Math.floor(container.width / adjWidth);
+  const perHeight = Math.floor(container.height / adjHeight);
+  const qty1 = perLength * perWidth * perHeight;
+
+  const remainingLength = availLength - perLength * normalLengthPerCarton;
+  // Flat cartons laid in the remaining length strip have their WIDTH facing the
+  // container length, so each one occupies (carton Width + Extra Width/bulging).
+  const flatLengthPerCarton = adjWidth;
+  const flatPerLength = Math.floor(remainingLength / flatLengthPerCarton);
+  const flatPerWidth = Math.floor(container.width / normalLengthPerCarton);
+  const flatPerHeight = perHeight;
+  const qty2 = flatPerLength * flatPerWidth * flatPerHeight;
+
+  const remainingHeight = container.height - perHeight * adjHeight;
+  const flatPerHeightLength = Math.floor(availLength / normalLengthPerCarton);
+  const flatPerHeightWidth = Math.floor(container.width / adjHeight);
+  const flatPerHeightHeight = Math.floor(remainingHeight / adjWidth);
+  const qty3 = flatPerHeightLength * flatPerHeightWidth * flatPerHeightHeight;
+
+  const qtyFit = qty1 + qty2 + qty3;
+  const lengthUsed = perLength * normalLengthPerCarton + flatPerLength * flatLengthPerCarton;
+
+  return {
+    perLength, flatPerLength, perWidth, perHeight, flatPerWidth, flatPerHeight,
+    flatPerHeightLength, flatPerHeightWidth, flatPerHeightHeight,
+    qty1, qty2, qty3, qtyFit, lengthUsed,
+  };
+}
+
+// Given an available container length and a target quantity, return the actual
+// length (in mm) needed to pack that many cartons of this size, following the
+// same three-step layout as computeFit. This lets the sequential packing free up
+// space for the next size when a carton is ordered in fewer numbers than it could
+// maximally hold (e.g. order 2000 of a size that could fit 3366).
+function lengthForQty(adjLength, adjWidth, adjHeight, availLength, container, qty) {
+  if (qty <= 0) return 0;
+
+  const normalLengthPerCarton = adjLength; // Length + Extra Length (bulging)
+  const perWidth = Math.floor(container.width / adjWidth);
+  const perHeight = Math.floor(container.height / adjHeight);
+  const normalLayer = perWidth * perHeight;
+  const perLength = Math.floor(availLength / normalLengthPerCarton);
+  const normalMax = perLength * normalLayer;
+
+  if (qty <= normalMax) {
+    return Math.ceil(qty / normalLayer) * normalLengthPerCarton;
+  }
+
+  let lengthUsed = perLength * normalLengthPerCarton;
+  let remaining = availLength - lengthUsed;
+  let qtyLeft = qty - normalMax;
+
+  const flatPerWidth = Math.floor(container.width / normalLengthPerCarton);
+  const flatPerHeight = perHeight;
+  const flatLayer2 = flatPerWidth * flatPerHeight;
+  const flatLengthPerCarton = adjWidth; // Width + Extra Width (bulging)
+  const flatPerLength = Math.floor(remaining / flatLengthPerCarton);
+  const flatMax2 = flatPerLength * flatLayer2;
+
+  if (qtyLeft <= flatMax2) {
+    return lengthUsed + Math.ceil(qtyLeft / flatLayer2) * flatLengthPerCarton;
+  }
+
+  lengthUsed += flatPerLength * flatLengthPerCarton;
+  remaining = availLength - lengthUsed;
+  qtyLeft -= flatMax2;
+
+  const flatPerHeightLength = Math.floor(availLength / normalLengthPerCarton);
+  const flatPerHeightWidth = Math.floor(container.width / adjHeight);
+  const flatPerHeightHeight = Math.floor((container.height - perHeight * adjHeight) / adjWidth);
+  const flatLayer3 = flatPerHeightLength * flatPerHeightWidth;
+  const flatMax3 = flatPerHeightHeight * flatLayer3;
+
+  if (qtyLeft <= flatMax3) {
+    return lengthUsed + Math.ceil(qtyLeft / flatLayer3) * adjLength;
+  }
+
+  return availLength;
+}
+
+// Decompose a target quantity into the same three loading steps as computeFit,
+// so we can show the user a concrete loading plan for the actual ordered qty
+// (not just the theoretical maximum). Returns the per-step counts and the
+// actual length consumed by that many cartons.
+function fitForQty(adjLength, adjWidth, adjHeight, availLength, container, qty) {
+  const normalLengthPerCarton = adjLength; // Length + Extra Length (bulging)
+  const perWidth = Math.floor(container.width / adjWidth);
+  const perHeight = Math.floor(container.height / adjHeight);
+  const normalLayer = perWidth * perHeight;
+  const perLength = Math.floor(availLength / normalLengthPerCarton);
+  const normalMax = perLength * normalLayer;
+
+  let qty1 = 0, usedLines = 0;
+  if (qty > 0) {
+    usedLines = Math.min(perLength, Math.ceil(qty / normalLayer));
+    qty1 = Math.min(qty, usedLines * normalLayer);
+  }
+  let lengthUsed = usedLines * normalLengthPerCarton;
+  let remaining = availLength - lengthUsed;
+  let qtyLeft = qty - qty1;
+
+  const flatPerWidth = Math.floor(container.width / normalLengthPerCarton);
+  const flatPerHeight = perHeight;
+  const flatLayer2 = flatPerWidth * flatPerHeight;
+  const flatLengthPerCarton = adjWidth; // Width + Extra Width (bulging)
+  const flatPerLength = Math.floor(remaining / flatLengthPerCarton);
+  let qty2 = 0, usedFlatLines = 0;
+  if (qtyLeft > 0 && flatPerLength > 0) {
+    usedFlatLines = Math.min(flatPerLength, Math.ceil(qtyLeft / flatLayer2));
+    qty2 = Math.min(qtyLeft, usedFlatLines * flatLayer2);
+  }
+  lengthUsed += usedFlatLines * flatLengthPerCarton;
+  remaining = availLength - lengthUsed;
+  qtyLeft -= qty2;
+
+  const flatPerHeightLength = Math.floor(availLength / normalLengthPerCarton);
+  const flatPerHeightWidth = Math.floor(container.width / adjHeight);
+  const flatPerHeightHeight = Math.floor((container.height - perHeight * adjHeight) / adjWidth);
+  const flatLayer3 = flatPerHeightLength * flatPerHeightWidth;
+  let qty3 = 0;
+  if (qtyLeft > 0 && flatPerHeightHeight > 0) {
+    qty3 = Math.min(qtyLeft, Math.min(flatPerHeightHeight, Math.ceil(qtyLeft / flatLayer3)) * flatLayer3);
+  }
+
+  return {
+    perLength: usedLines, flatPerLength: usedFlatLines,
+    perWidth, perHeight, flatPerWidth, flatPerHeight,
+    flatPerHeightLength, flatPerHeightWidth, flatPerHeightHeight,
+    qty1, qty2, qty3, qtyFit: qty1 + qty2 + qty3, lengthUsed,
+  };
+}
+
 function calculateLoading() {
   const type = document.getElementById("containerType").value;
   const container = containerData[type];
@@ -133,24 +277,20 @@ function calculateLoading() {
       const adjWidth = cartonWidth + bulgingWidth;
       const adjHeight = cartonHeight + bulgingHeight;
 
-      const perLength = Math.floor(container.length / adjLength);
-      const perWidth = Math.floor(container.width / adjWidth);
-      const perHeight = Math.floor(container.height / adjHeight);
-      const qty1 = perLength * perWidth * perHeight;
-
-      const remainingLength = container.length - perLength * adjLength;
-      const flatPerLength = Math.floor(remainingLength / adjWidth);
-      const flatPerWidth = Math.floor(container.width / adjLength);
-      const flatPerHeight = perHeight;
-      const qty2 = flatPerLength * flatPerWidth * flatPerHeight;
-
-      const remainingHeight = container.height - perHeight * adjHeight;
-      const flatPerHeightLength = Math.floor(container.length / adjLength);
-      const flatPerHeightWidth = Math.floor(container.width / adjHeight);
-      const flatPerHeightHeight = Math.floor(remainingHeight / adjWidth);
-      const qty3 = flatPerHeightLength * flatPerHeightWidth * flatPerHeightHeight;
-
-      const totalFit = qty1 + qty2 + qty3;
+      const fit = computeFit(adjLength, adjWidth, adjHeight, container.length, container);
+      const perLength = fit.perLength;
+      const perWidth = fit.perWidth;
+      const perHeight = fit.perHeight;
+      const qty1 = fit.qty1;
+      const flatPerLength = fit.flatPerLength;
+      const flatPerWidth = fit.flatPerWidth;
+      const flatPerHeight = fit.flatPerHeight;
+      const qty2 = fit.qty2;
+      const flatPerHeightLength = fit.flatPerHeightLength;
+      const flatPerHeightWidth = fit.flatPerHeightWidth;
+      const flatPerHeightHeight = fit.flatPerHeightHeight;
+      const qty3 = fit.qty3;
+      const totalFit = fit.qtyFit;
 
       const actualLoadQty = Math.min(orderQty, totalFit);
       const cartonCbm = (adjLength * adjWidth * adjHeight) / 1000000000;
@@ -160,45 +300,85 @@ function calculateLoading() {
 
       cartonSummaryRows.push({
         label: `Size ${index + 1}: ${cartonLength}\u00d7${cartonWidth}\u00d7${cartonHeight} mm`,
-        qty: actualLoadQty,
         orderQty: orderQty,
-        cbm: utilizedCbm,
+        cbmPerCarton: cartonCbm,
+        totalFit: totalFit,
+        adjLength: adjLength,
+        adjWidth: adjWidth,
+        adjHeight: adjHeight,
       });
 
       totalUtilizedCbm += utilizedCbm;
       totalCartonQty += actualLoadQty;
+
+      const planQty = Math.min(orderQty, totalFit);
+      const plan = fitForQty(adjLength, adjWidth, adjHeight, container.length, container, planQty);
 
       detailsHTML += `
         <div class="loading-details">
           <h3>Carton Size ${index + 1} Details</h3>
           <p>Carton Size dimensions are:<br>L = ${cartonLength} mm, W = ${cartonWidth} mm, H = ${cartonHeight} mm</p>
 
-          <div class="td">
-            <p class="fc">Loading qty without flat: ${qty1} Boxes</p>
-            <p>Number of columns: ${perLength}</p>
-            <p>Number of rows horizontally: ${perWidth}</p>
-            <p>Number of rows vertically: ${perHeight}</p>
+          <div class="detail-split">
+            <div class="detail-panel">
+              <h4 class="panel-title">Maximum fit (full container)</h4>
+
+              <div class="td">
+                <p class="fc">Loading qty without flat: ${qty1} Boxes</p>
+                <p>Number of Lines: ${perLength}</p>
+                <p>Number of rows horizontally: ${perWidth}</p>
+                <p>Number of rows vertically: ${perHeight}</p>
+              </div>
+
+              <div class="td1">
+                <p class="fc">Flat loading qty rest of the length: ${qty2} Boxes</p>
+                <p>Number of flat Lines rest length: ${flatPerLength}</p>
+                <p>Number of flat rows horizontally: ${flatPerWidth}</p>
+                <p>Number of flat rows vertically: ${flatPerHeight}</p>
+              </div>
+
+              <div class="td2">
+                <p class="fc">Flat loading qty rest of the height: ${qty3} Boxes</p>
+                <p>Number of flat Lines rest height: ${flatPerHeightLength}</p>
+                <p>Number of flat rows horizontally: ${flatPerHeightWidth}</p>
+                <p>Number of flat rows vertically: ${flatPerHeightHeight}</p>
+              </div>
+
+              <p class="fc2"><b>Total Loading Qty with flat: ${totalFit} Boxes</b></p>
+              <p>Utilized CBM: ${utilizedCbm.toFixed(2)} CBM</p>
+              <p>Empty CBM: ${(container.capacity - utilizedCbm).toFixed(2)} CBM</p>
+            </div>
+
+            <div class="detail-panel">
+              <h4 class="panel-title">Loading plan for ${planQty} Boxes${reduced ? ` <small style="color:#f39c12;">(Order: ${orderQty})</small>` : ''}</h4>
+
+              <div class="td">
+                <p class="fc">Loading qty without flat: ${plan.qty1} Boxes</p>
+                <p>Number of Lines: ${plan.perLength}</p>
+                <p>Number of rows horizontally: ${plan.perWidth}</p>
+                <p>Number of rows vertically: ${plan.perHeight}</p>
+              </div>
+
+              <div class="td1">
+                <p class="fc">Flat loading qty rest of the length: ${plan.qty2} Boxes</p>
+                <p>Number of flat Lines rest length: ${plan.flatPerLength}</p>
+                <p>Number of flat rows horizontally: ${plan.flatPerWidth}</p>
+                <p>Number of flat rows vertically: ${plan.flatPerHeight}</p>
+              </div>
+
+              <div class="td2">
+                <p class="fc">Flat loading qty rest of the height: ${plan.qty3} Boxes</p>
+                <p>Number of flat Lines rest height: ${plan.flatPerHeightLength}</p>
+                <p>Number of flat rows horizontally: ${plan.flatPerHeightWidth}</p>
+                <p>Number of flat rows vertically: ${plan.flatPerHeightHeight}</p>
+              </div>
+
+              <p class="fc2"><b>Total Loading Qty: ${plan.qtyFit} Boxes</b></p>
+              <p>Length consumed: ${plan.lengthUsed.toFixed(0)} mm</p>
+              <p>Utilized CBM: ${(planQty * cartonCbm).toFixed(2)} CBM</p>
+              <p>Free length after this size: ${(container.length - plan.lengthUsed).toFixed(0)} mm</p>
+            </div>
           </div>
-
-          <div class="td1">
-            <p class="fc">Flat loading qty rest of the length: ${qty2} Boxes</p>
-            <p>Number of flat columns rest length: ${flatPerLength}</p>
-            <p>Number of flat rows horizontally: ${flatPerWidth}</p>
-            <p>Number of flat rows vertically: ${flatPerHeight}</p>
-          </div>
-
-          <div class="td2">
-            <p class="fc">Flat loading qty rest of the height: ${qty3} Boxes</p>
-            <p>Number of flat columns rest height: ${flatPerHeightLength}</p>
-            <p>Number of flat rows horizontally: ${flatPerHeightWidth}</p>
-            <p>Number of flat rows vertically: ${flatPerHeightHeight}</p>
-          </div>
-
-          <p class="fc2"><b>Total Loading Qty with flat: ${totalFit} Boxes</b></p>
-          <p><b>Order Qty: ${orderQty} Boxes${reduced ? ` | Loaded Qty: ${actualLoadQty} Boxes (capped at max fit)` : ''}</b></p>
-
-          <p>Utilized CBM: ${utilizedCbm.toFixed(2)} CBM</p>
-          <p>Empty CBM: ${(container.capacity - utilizedCbm).toFixed(2)} CBM</p>
         </div>
       `;
     }
@@ -208,55 +388,142 @@ function calculateLoading() {
   document.getElementById("totalUtilizedCbm").textContent = totalUtilizedCbm.toFixed(2);
   document.getElementById("totalEmptyCbm").textContent = (containerData[type].capacity - totalUtilizedCbm).toFixed(2);
 
+  // ---- Sequential length-based packing for the Loading Summary ----
+  // Carton sizes are loaded one after another along the container length.
+  // Length consumed by a size = (L x Lines) + (W x flat Lines rest length).
+  // The remaining length is passed to the next size. This is the only part
+  // affected by the new rule (Carton Size Details above stays unchanged).
+  let availLength = container.length;
+  const seqResults = cartonSummaryRows.map((row) => {
+    const fit = computeFit(row.adjLength, row.adjWidth, row.adjHeight, availLength, container);
+    const seqLoaded = Math.min(row.orderQty, fit.qtyFit);
+    // Consume only the length actually needed for the loaded quantity, so a
+    // partially-ordered size does not block the remaining space from the next size.
+    const lengthUsed = lengthForQty(row.adjLength, row.adjWidth, row.adjHeight, availLength, container, seqLoaded);
+    availLength = Math.max(0, availLength - lengthUsed);
+    return Object.assign({}, row, { fit: fit, seqLoaded: seqLoaded, lengthUsed: lengthUsed });
+  });
+  const finalRemainingLength = availLength;
+  const freeCbm = (finalRemainingLength * container.width * container.height) / 1000000000;
+
+  const summaryTotalCartons = seqResults.reduce((s, r) => s + r.seqLoaded, 0);
+  const summaryUtilizedCbm = seqResults.reduce((s, r) => s + r.seqLoaded * r.cbmPerCarton, 0);
+
   let summaryBodyHTML = "";
-  const emptyCbm = containerData[type].capacity - totalUtilizedCbm;
-  cartonSummaryRows.forEach((row) => {
-    const reduced = row.orderQty > row.qty;
-    const perCartonCbm = row.qty > 0 ? row.cbm / row.qty : 0;
-    let fillQtyNum, fillQty;
-    if (emptyCbm > 0 && perCartonCbm > 0) {
-      fillQtyNum = Math.floor(emptyCbm / perCartonCbm);
-      fillQty = `+${fillQtyNum}`;
-    } else if (emptyCbm < 0 && perCartonCbm > 0) {
-      fillQtyNum = -Math.ceil(Math.abs(emptyCbm) / perCartonCbm);
-      fillQty = `${fillQtyNum}`;
-    } else {
-      fillQtyNum = 0;
-      fillQty = '-';
+  const emptyCbm = containerData[type].capacity - summaryUtilizedCbm;
+  const exceedsCapacity = summaryUtilizedCbm > containerData[type].capacity;
+  seqResults.forEach((row) => {
+    const reduced = row.orderQty > row.seqLoaded;
+    const perCartonCbm = row.cbmPerCarton;
+    // Qty to Fill = how many more of THIS size fit inside the final remaining
+    // container length (the free space left after all sizes were packed).
+    let fillQtyNum = 0;
+    if (perCartonCbm > 0 && finalRemainingLength > 0) {
+      const f = computeFit(row.adjLength, row.adjWidth, row.adjHeight, finalRemainingLength, container);
+      fillQtyNum = f.qtyFit;
     }
-    const proposedLoadQty = Math.max(0, row.qty + fillQtyNum);
+    const fillQty = fillQtyNum > 0 ? `+${fillQtyNum}` : '0';
+    const balanceToLoad = Math.max(0, Math.ceil(row.orderQty - row.seqLoaded));
+    const proposedLoadQty = row.seqLoaded + fillQtyNum;
     summaryBodyHTML += `
       <tr>
         <td>${row.label}</td>
         <td>${perCartonCbm.toFixed(4)}</td>
-        <td>${row.qty}${reduced ? `<br><small style="color: #f39c12;">Order: ${row.orderQty}</small>` : ''}</td>
-        <td>${row.cbm.toFixed(2)} m\u00b3</td>
+        <td>${row.seqLoaded}${reduced ? `<br><small style="color: #f39c12;">Order: ${row.orderQty}</small>` : ''}</td>
+        <td>${balanceToLoad}</td>
+        <td>${(row.seqLoaded * perCartonCbm).toFixed(2)} m\u00b3</td>
         <td>${fillQty}</td>
         <td>${proposedLoadQty}</td>
       </tr>`;
   });
-  const exceedsCapacity = totalUtilizedCbm > containerData[type].capacity;
+  const totalBalance = seqResults.reduce(
+    (sum, row) => sum + Math.max(0, Math.ceil(row.orderQty - row.seqLoaded)),
+    0
+  );
   const summaryFooterHTML = `
     <tr style="font-weight: bold; background: rgba(52, 152, 219, 0.2);">
       <td colspan="2">Total</td>
-      <td>${totalCartonQty}</td>
-      <td>${totalUtilizedCbm.toFixed(2)} m\u00b3</td>
+      <td>${summaryTotalCartons}</td>
+      <td>${totalBalance}</td>
+      <td>${summaryUtilizedCbm.toFixed(2)} m\u00b3</td>
       <td></td>
       <td></td>
     </tr>
     <tr style="font-weight: bold; background: rgba(231, 76, 60, 0.15);">
-      <td colspan="5">Total Empty CBM:</td>
+      <td colspan="6">Total Empty CBM:</td>
       <td style="${exceedsCapacity ? 'color: #e74c3c; font-weight: bold;' : ''}">${emptyCbm.toFixed(2)} m\u00b3</td>
     </tr>`;
   document.getElementById("loadingSummaryBody").innerHTML = summaryBodyHTML;
   document.getElementById("loadingSummaryFooter").innerHTML = summaryFooterHTML;
+
+  const existingFreeNote = document.getElementById("freeLengthNote");
+  if (existingFreeNote) existingFreeNote.remove();
+  const freeNote = document.createElement("div");
+  freeNote.id = "freeLengthNote";
+  freeNote.style.cssText = "margin-top: 10px; padding: 10px 15px; background: rgba(46, 204, 113, 0.12); border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 8px; font-size: 0.95rem;";
+  freeNote.innerHTML = `<i class="fas fa-ruler-horizontal" style="color: #2ecc71; margin-right: 8px;"></i>
+    <b>Remaining free container length:</b> ${finalRemainingLength.toFixed(0)} mm &nbsp;&rarr;&nbsp; <b>Free volume:</b> ${freeCbm.toFixed(2)} m\u00b3
+    <br><small>This is the length left after sequentially packing every carton size along the container length. It can still be used by additional sizes.</small>`;
+  document.getElementById("loadingSummary").appendChild(freeNote);
+
+  const existingProposal = document.getElementById("balanceProposal");
+  if (existingProposal) existingProposal.remove();
+
+  if (totalBalance > 0) {
+    let proposalRows = "";
+    seqResults.forEach((row) => {
+      const balance = Math.max(0, Math.ceil(row.orderQty - row.seqLoaded));
+      if (balance <= 0) return;
+      const perContainer = row.totalFit;
+      const containersNeeded = Math.ceil(balance / perContainer);
+      const lastContainerLoad = balance % perContainer === 0 ? perContainer : balance % perContainer;
+      const containerFull = row.seqLoaded >= row.totalFit;
+      proposalRows += `
+        <tr>
+          <td>${row.label}</td>
+          <td>${balance}</td>
+          <td>${perContainer}</td>
+          <td>${containersNeeded}</td>
+          <td>${perContainer} (last: ${lastContainerLoad})</td>
+        </tr>`;
+    });
+
+    if (proposalRows) {
+      const proposalDiv = document.createElement("div");
+      proposalDiv.id = "balanceProposal";
+      proposalDiv.style.cssText = "background: rgba(155, 89, 182, 0.15); border: 2px solid #9b59b6; border-radius: 10px; padding: 15px; margin-top: 15px;";
+      proposalDiv.innerHTML = `
+        <h3 style="color: #9b59b6; margin-top: 0;">
+          <i class="fas fa-lightbulb"></i> Proposal for Remaining Order (Balance to Load)
+        </h3>
+        <p style="margin-bottom: 10px;">
+          The current container is physically <b>full</b> for the loaded carton size(s).
+          The "Qty to Fill" is <b>0</b> because the remaining empty space (CBM) cannot fit
+          even one more carton of this size in any orientation. The unfulfilled balance below
+          must be loaded into <b>additional container(s)</b>.
+        </p>
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>Carton Size</th>
+              <th>Balance to Load</th>
+              <th>Max Fit / Container</th>
+              <th>Containers Needed</th>
+              <th>Load per Container</th>
+            </tr>
+          </thead>
+          <tbody>${proposalRows}</tbody>
+        </table>`;
+      document.getElementById("loadingSummary").appendChild(proposalDiv);
+    }
+  }
 
   if (exceedsCapacity) {
     const warningHTML = `
       <div style="background: rgba(231, 76, 60, 0.2); border: 2px solid #e74c3c; border-radius: 10px; padding: 15px; margin-top: 15px; text-align: center;">
         <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 1.5rem; margin-right: 10px;"></i>
         <span style="color: #e74c3c; font-weight: bold; font-size: 1.1rem;">
-          Warning: Planned loading quantity (${totalUtilizedCbm.toFixed(2)} m\u00b3) exceeds container capacity (${containerData[type].capacity} m\u00b3) by ${Math.abs(emptyCbm).toFixed(2)} m\u00b3!
+          Warning: Planned loading quantity (${summaryUtilizedCbm.toFixed(2)} m\u00b3) exceeds container capacity (${containerData[type].capacity} m\u00b3) by ${Math.abs(emptyCbm).toFixed(2)} m\u00b3!
         </span>
       </div>`;
     const existingWarning = document.getElementById("capacityWarning");
@@ -269,8 +536,8 @@ function calculateLoading() {
     const excessCbm = Math.abs(emptyCbm);
     let bestSize = null;
     let bestRemove = Infinity;
-    cartonSummaryRows.forEach((row) => {
-      const perCartonCbm = row.qty > 0 ? row.cbm / row.qty : 0;
+    seqResults.forEach((row) => {
+      const perCartonCbm = row.cbmPerCarton;
       if (perCartonCbm > 0) {
         const toRemove = Math.ceil(excessCbm / perCartonCbm);
         if (toRemove < bestRemove) {
@@ -331,11 +598,12 @@ function calculateLoading() {
   document.getElementById("containerDetails").innerHTML = containerDetailsHTML;
 
   document.getElementById("loadingSummary").style.display = "block";
-  document.getElementById("utilizationPercent").textContent = utilizationPercent + "%";
-  document.getElementById("efficiencyFill").style.width = utilizationPercent + "%";
-  document.getElementById("efficiencyText").textContent = utilizationPercent + "%";
-  document.getElementById("totalCartonsLoaded").textContent = totalCartonQty;
-  document.getElementById("emptySpaceValue").textContent = (containerData[type].capacity - totalUtilizedCbm).toFixed(2) + " m\u00b3";
+  const summaryUtilizationPercent = Math.min(100, (summaryUtilizedCbm / containerData[type].capacity) * 100).toFixed(1);
+  document.getElementById("utilizationPercent").textContent = summaryUtilizationPercent + "%";
+  document.getElementById("efficiencyFill").style.width = summaryUtilizationPercent + "%";
+  document.getElementById("efficiencyText").textContent = summaryUtilizationPercent + "%";
+  document.getElementById("totalCartonsLoaded").textContent = summaryTotalCartons;
+  document.getElementById("emptySpaceValue").textContent = (containerData[type].capacity - summaryUtilizedCbm).toFixed(2) + " m\u00b3";
 }
 
 function clearData() {
