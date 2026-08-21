@@ -414,6 +414,35 @@ footer a:hover {
   margin: 10px 0;
 }
 
+/* Two-panel split: left = max fit, right = loading plan for ordered qty */
+.detail-split {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.detail-panel {
+  flex: 1 1 320px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.panel-title {
+  color: var(--secondary);
+  font-size: 1.05rem;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(52, 152, 219, 0.3);
+}
+
+@media (max-width: 700px) {
+  .detail-split {
+    flex-direction: column;
+  }
+}
+
 /* Home page styles */
 .home-content {
   text-align: center;
